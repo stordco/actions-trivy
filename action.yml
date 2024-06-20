@@ -1,0 +1,224 @@
+name: stordco/actions-trivy
+
+branding:
+  color: blue
+  icon: list
+
+description: >-
+  GitHub Composite Action for running Trivy scans
+
+inputs:
+  scan-type:
+    description: >-
+      "Specify the type of scan to be perforemed (e.g., 'fs' for filesystem scan)."
+    type: string
+    required: true
+  github-token:
+    description: "GitHub token for authentication."
+    type: string
+    default: ""
+    required: false
+  slack-bot-token:
+    description: "Slackbot token for sending notifications."
+    type: string
+    default: ""
+    required: false
+
+outputs:
+  artifact-url:
+    description: "Link to the Trivy scan artifact"
+    value: ${{ steps.trivy_artifact_upload.outputs.artifact-url }}
+
+runs:
+  using: composite
+  steps:
+    - name: Configure configuration file
+      id: configuration_file
+      run: |
+        if [[ '${{ inputs.scan-type }}' == 'fs' ]]; then
+          echo "config_file_type=fs" >> "$GITHUB_OUTPUT"
+        fi
+      shell: bash
+
+    - name: Run Trivy vulnerability scanner in ${{ inputs.scan-type }} mode
+      id: trivy_scan
+      uses: aquasecurity/trivy-action@0.23.0
+      with:
+        scan-type: ${{ inputs.scan-type }}
+        trivy-config: .trivy/${{ steps.configuration_file.outputs.config_file_type }}-config.yaml
+      continue-on-error: true
+
+    - name: Set retention days
+      id: set_retention_days
+      run: |
+        if [[ '${{ github.ref }}' == 'refs/heads/main' ]]; then
+          echo "Keep trivy artifact for 90 days on main branch merge"
+          echo "days=90" >> "$GITHUB_OUTPUT"
+        else
+          echo "Keep trivy artifact for 1 day on PR builds"
+          echo "days=1" >> "$GITHUB_OUTPUT"
+        fi
+      shell: bash
+
+    - name: Upload Trivy report to artifacts
+      uses: actions/upload-artifact@v4
+      id: trivy_artifact_upload
+      with:
+        name: trivy-${{ inputs.scan-type }}-results
+        path: trivy-${{ inputs.scan-type }}-results.json
+        retention-days: ${{ steps.set_retention_days.outputs.days }}
+        if-no-files-found: ignore
+
+    - name: Upload Trivy Report as PR Comment and parse Critical vulnerabilities
+      id: trivy_report_notification
+      if: steps.trivy_scan.outcome == 'failure' && inputs.github-token != ''
+      uses: actions/github-script@v7
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        SCAN_TYPE: ${{ inputs.scan-type }}
+      with:
+        script: |
+          const fs = require('fs');
+          const path = require('path');
+          const issue_number = context.payload.pull_request.number;
+          const owner = context.repo.owner;
+          const repo = context.repo.repo;
+
+          const commentIdentifier = `<!-- trivyReportComment-${process.env.SCAN_TYPE}-->`;
+
+          const filePath = path.join(process.env.GITHUB_WORKSPACE, `trivy-${process.env.SCAN_TYPE}-results.json`);
+          const fileContent = fs.readFileSync(filePath, 'utf8');
+          const jsonData = JSON.parse(fileContent);
+
+          function formatVulnerabilities(vulnerabilities) {
+            const headers = ["Library", "Vulnerability", "Severity", "Status", "Installed Version", "Fixed Version", "Title"];
+            const headerRow = `| ${headers.join(" | ")} |`;
+            const separatorRow = `| ${headers.map(() => "---").join(" | ")} |`;
+
+            const rows = vulnerabilities.map(vuln => {
+              const titleWithUrl = `${vuln.Title || ""} (${vuln.PrimaryURL || ""})`;
+              return `| ${[
+                vuln.PkgName || "",
+                vuln.VulnerabilityID || "",
+                vuln.Severity || "",
+                vuln.Status || "",
+                vuln.InstalledVersion || "",
+                vuln.FixedVersion || "",
+                titleWithUrl
+              ].join(" | ")} |`;
+            });
+
+            return [headerRow, separatorRow, ...rows].join("\n");
+          }
+
+          function parseTrivyResults(data) {
+            const allVulnerabilities = [];
+            data.Results.forEach(result => {
+              if (result.Vulnerabilities) {
+                result.Vulnerabilities.forEach(vuln => {
+                  allVulnerabilities.push(vuln);
+                });
+              }
+            });
+            return allVulnerabilities;
+          }
+
+          const vulnerabilities = parseTrivyResults(jsonData);
+          const criticalVulnerabilitiesCount = vulnerabilities.filter(vuln => vuln.Severity === 'CRITICAL').length;
+          core.setOutput('critical_vulnerabilities_count', criticalVulnerabilitiesCount.toString());
+
+          if (vulnerabilities.length === 0) {
+            console.log("No vulnerabilities found.");
+          } else {
+            const formattedContent = `
+            <details>
+              <summary>Trivy Scan Report</summary>
+
+            ${formatVulnerabilities(vulnerabilities)}
+            ${commentIdentifier}
+            </details>
+            `;
+
+            const MAX_COMMENT_LENGTH = 65536;
+
+            const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number,
+            });
+
+            const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
+            let fullCommentBody;
+
+            if (formattedContent.length > MAX_COMMENT_LENGTH) {
+              fullCommentBody = `
+              The Trivy scan report is too large to display here. Please view the detailed output from the job:
+
+              [View Trivy Report](https://github.com/${owner}/${repo}/actions/runs/${context.runId})
+
+              ${commentIdentifier}
+              `;
+            } else {
+              fullCommentBody = `
+              View the Trivy scan report below. Click on the dropdown to expand the report.
+              ${formattedContent}
+              `;
+            }
+
+            if (botComment) {
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: botComment.id,
+                body: fullCommentBody,
+              });
+              core.info('Updated existing comment');
+            } else {
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number,
+                body: fullCommentBody,
+              });
+            }
+          }
+
+    - name: Notify Slack of critical vulnerabilities
+      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count }} != '0' && github.ref == 'refs/heads/main' && inputs.slack-bot-token != ''
+      uses: slackapi/slack-github-action@v1.26.0
+      env:
+        SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
+      with:
+        channel-id: 'C078TPMGC21'
+        payload: |
+          {
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": ":alert: *Critical vulnerabilities detected* in Trivy ${{ inputs.scan-type }} scan. ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count }} critical vulnerabilities detected."
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\n`${{ github.repository }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n`${{ github.ref }}`"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "<${{ steps.trivy_artifact_upload.outputs.artifact-url }}|View Artifacts>"
+                }
+              }
+            ]
+          }

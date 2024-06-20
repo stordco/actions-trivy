@@ -12,7 +12,7 @@ stordco/actions-trivy is used to run [trivy](https://github.com/aquasecurity/tri
 
 ```yaml
   - name: Trivy scan in fs mode
-    uses: stordco/actions-trivy@v1.0.0
+    uses: stordco/actions-trivy@v1.1.0
     with:
         scan-type: 'fs'
         github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}

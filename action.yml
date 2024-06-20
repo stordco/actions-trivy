@@ -16,12 +16,10 @@ inputs:
   github-token:
     description: "GitHub token for authentication."
     type: string
-    default: ""
     required: false
   slack-bot-token:
     description: "Slackbot token for sending notifications."
     type: string
-    default: ""
     required: false
 
 outputs:
@@ -71,7 +69,7 @@ runs:
 
     - name: Upload Trivy Report as PR Comment and parse Critical vulnerabilities
       id: trivy_report_notification
-      if: steps.trivy_scan.outcome == 'failure' && inputs.github-token != ''
+      if: ${{ steps.trivy_scan.outcome == 'failure' && inputs.github-token }}
       uses: actions/github-script@v7
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
@@ -184,7 +182,7 @@ runs:
           }
 
     - name: Notify Slack of critical vulnerabilities
-      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count }} != '0' && github.ref == 'refs/heads/main' && inputs.slack-bot-token != ''
+      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count != '0' && github.ref == 'refs/heads/main' && inputs.slack-bot-token }}
       uses: slackapi/slack-github-action@v1.26.0
       env:
         SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}

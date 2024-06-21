@@ -69,7 +69,7 @@ runs:
 
     - name: Upload Trivy Report as PR Comment and parse Critical vulnerabilities
       id: trivy_report_notification
-      if: ${{ steps.trivy_scan.outcome == 'failure' && inputs.github-token }}
+      if: ${{ inputs.github-token }}
       uses: actions/github-script@v7
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
@@ -136,14 +136,19 @@ runs:
 
           const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
 
-          if (vulnerabilities.flatMap(result => result.Vulnerabilities).length === 0 && botComment) {
-            const noErrorsComment = `No vulnerabilities to be reported.`;
-            await github.rest.issues.updateComment({
-              owner,
-              repo,
-              comment_id: botComment.id,
-              body: noErrorsComment,
-            });
+          if (vulnerabilities.flatMap(result => result.Vulnerabilities).length === 0) {
+            if (botComment) {
+              const noErrorsComment = `No vulnerabilities to be reported.`;
+              await github.rest.issues.updateComment({
+                owner,
+                repo,
+                comment_id: botComment.id,
+                body: noErrorsComment,
+              });
+              core.info('Updated existing PR comment to indicate no vulnerabilities detected anymore');
+            } else {
+              core.info('No vulnerabilities found, no comment posted');
+            }
           } else {
             const formattedContent = `
             <details>

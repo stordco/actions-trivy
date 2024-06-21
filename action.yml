@@ -46,26 +46,31 @@ runs:
         trivy-config: .trivy/${{ steps.configuration_file.outputs.config_file_type }}-config.yaml
       continue-on-error: true
 
-    - name: Set retention days
-      id: set_retention_days
+    - name: Set artifact upload metadata
+      id: artifact_metadata
       run: |
-        if [[ '${{ github.ref }}' == 'refs/heads/main' ]]; then
+        if [[ '${{ github.ref_name }}' == 'main' ]]; then
           echo "Keep trivy artifact for 90 days on main branch merge"
           echo "days=90" >> "$GITHUB_OUTPUT"
         else
           echo "Keep trivy artifact for 1 day on PR builds"
           echo "days=1" >> "$GITHUB_OUTPUT"
         fi
+        echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+        sanitized_ref_name=$(echo "${{ github.ref_name }}" | sed 's/[\\\/:*?<>|]/-/g')
+
+        echo "ref_name=${sanitized_ref_name}" >> $GITHUB_OUTPUT
       shell: bash
 
     - name: Upload Trivy report to artifacts
       uses: actions/upload-artifact@v4
       id: trivy_artifact_upload
       with:
-        name: trivy-${{ inputs.scan-type }}-results
+        name: trivy-${{ inputs.scan-type }}-results-${{ steps.artifact_metadata.outputs.sha_short }}-${{ steps.artifact_metadata.outputs.ref_name }}
         path: trivy-${{ inputs.scan-type }}-results.json
-        retention-days: ${{ steps.set_retention_days.outputs.days }}
+        retention-days: ${{ steps.artifact_metadata.outputs.days }}
         if-no-files-found: ignore
+        overwrite: true
 
     - name: Upload Trivy Report as PR Comment and parse Critical vulnerabilities
       id: trivy_report_notification
@@ -199,7 +204,7 @@ runs:
           }
 
     - name: Notify Slack of critical vulnerabilities
-      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count != '0' && github.ref == 'refs/heads/main' && inputs.slack-bot-token }}
+      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count != '0' && github.ref_name == 'main' && inputs.slack-bot-token }}
       uses: slackapi/slack-github-action@v1.26.0
       env:
         SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
@@ -224,7 +229,7 @@ runs:
                   },
                   {
                     "type": "mrkdwn",
-                    "text": "*Branch:*\n`${{ github.ref }}`"
+                    "text": "*Branch:*\n`${{ github.ref_name }}`"
                   }
                 ]
               },

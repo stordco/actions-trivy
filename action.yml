@@ -125,8 +125,22 @@ runs:
           const criticalVulnerabilitiesCount = vulnerabilities.filter(vuln => vuln.Severity === 'CRITICAL').length;
           core.setOutput('critical_vulnerabilities_count', criticalVulnerabilitiesCount.toString());
 
-          if (vulnerabilities.length === 0) {
-            console.log("No vulnerabilities found.");
+          const comments = await github.rest.issues.listComments({
+              owner,
+              repo,
+              issue_number,
+            });
+
+          const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
+
+          if (vulnerabilities.length === 0 && botComment) {
+            const noErrorsComment = `No vulnerabilities to be reported.`;
+            await github.rest.issues.updateComment({
+              owner,
+              repo,
+              comment_id: botComment.id,
+              body: noErrorsComment,
+            });
           } else {
             const formattedContent = `
             <details>
@@ -139,13 +153,6 @@ runs:
 
             const MAX_COMMENT_LENGTH = 65536;
 
-            const comments = await github.rest.issues.listComments({
-              owner,
-              repo,
-              issue_number,
-            });
-
-            const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
             let fullCommentBody;
 
             if (formattedContent.length > MAX_COMMENT_LENGTH) {

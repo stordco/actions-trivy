@@ -88,42 +88,45 @@ runs:
           const fileContent = fs.readFileSync(filePath, 'utf8');
           const jsonData = JSON.parse(fileContent);
 
-          function formatVulnerabilities(vulnerabilities) {
-            const headers = ["Library", "Vulnerability", "Severity", "Status", "Installed Version", "Fixed Version", "Title"];
+          function formatVulnerabilities(results) {
+            const headers = ["Library", "Vulnerability", "Severity", "Status", "Installed Version", "Fixed Version", "Title", "Target"];
             const headerRow = `| ${headers.join(" | ")} |`;
             const separatorRow = `| ${headers.map(() => "---").join(" | ")} |`;
 
-            const rows = vulnerabilities.map(vuln => {
-              const titleWithUrl = `${vuln.Title || ""} (${vuln.PrimaryURL || ""})`;
-              return `| ${[
-                vuln.PkgName || "",
-                vuln.VulnerabilityID || "",
-                vuln.Severity || "",
-                vuln.Status || "",
-                vuln.InstalledVersion || "",
-                vuln.FixedVersion || "",
-                titleWithUrl
-              ].join(" | ")} |`;
+            const rows = results.flatMap(result => {
+              if (result.Vulnerabilities && result.Vulnerabilities.length > 0) {
+                return result.Vulnerabilities.map(vuln => {
+                  const titleWithUrl = `${vuln.Title || ""} (${vuln.PrimaryURL || ""})`;
+                  return `| ${[
+                    vuln.PkgName || "",
+                    vuln.VulnerabilityID || "",
+                    vuln.Severity || "",
+                    vuln.Status || "",
+                    vuln.InstalledVersion || "",
+                    vuln.FixedVersion || "",
+                    titleWithUrl,
+                    result.Target || ""
+                  ].join(" | ")} |`;
+                });
+              } else {
+                return [];
+              }
             });
 
             return [headerRow, separatorRow, ...rows].join("\n");
           }
 
           function parseTrivyResults(data) {
-            const allVulnerabilities = [];
-            data.Results.forEach(result => {
-              if (result.Vulnerabilities) {
-                result.Vulnerabilities.forEach(vuln => {
-                  allVulnerabilities.push(vuln);
-                });
-              }
-            });
-            return allVulnerabilities;
+            return data.Results.map(result => ({
+              Target: result.Target,
+              Vulnerabilities: result.Vulnerabilities || []
+            }));
           }
 
           const vulnerabilities = parseTrivyResults(jsonData);
-          const criticalVulnerabilitiesCount = vulnerabilities.filter(vuln => vuln.Severity === 'CRITICAL').length;
+          const criticalVulnerabilitiesCount = vulnerabilities.flatMap(result => result.Vulnerabilities).filter(vuln => vuln.Severity === 'CRITICAL').length;
           core.setOutput('critical_vulnerabilities_count', criticalVulnerabilitiesCount.toString());
+          core.info(`Found ${criticalVulnerabilitiesCount} critical vulnerabilities`);
 
           const comments = await github.rest.issues.listComments({
               owner,
@@ -133,7 +136,7 @@ runs:
 
           const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
 
-          if (vulnerabilities.length === 0 && botComment) {
+          if (vulnerabilities.flatMap(result => result.Vulnerabilities).length === 0 && botComment) {
             const noErrorsComment = `No vulnerabilities to be reported.`;
             await github.rest.issues.updateComment({
               owner,
@@ -177,7 +180,7 @@ runs:
                 comment_id: botComment.id,
                 body: fullCommentBody,
               });
-              core.info('Updated existing comment');
+              core.info('Updated existing PR comment');
             } else {
               await github.rest.issues.createComment({
                 owner,
@@ -185,6 +188,7 @@ runs:
                 issue_number,
                 body: fullCommentBody,
               });
+              core.info('Created new Pr comment');
             }
           }
 

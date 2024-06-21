@@ -144,7 +144,8 @@ runs:
 
           if (vulnerabilities.flatMap(result => result.Vulnerabilities).length === 0) {
             if (botComment) {
-              const noErrorsComment = `No vulnerabilities to be reported.`;
+              const noErrorsComment = `No vulnerabilities to be reported.\n${commentIdentifier}`;
+
               await github.rest.issues.updateComment({
                 owner,
                 repo,

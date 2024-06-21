@@ -135,6 +135,7 @@ runs:
             });
 
           const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
+          core.info(`Parsed Vulnerabilities: ${JSON.stringify(vulnerabilities)}`)
 
           if (vulnerabilities.flatMap(result => result.Vulnerabilities).length === 0) {
             if (botComment) {

@@ -8,15 +8,23 @@ description: >-
   GitHub Composite Action for running Trivy scans
 
 inputs:
-  scan-type:
-    description: >-
-      "Specify the type of scan to be perforemed (e.g., 'fs' for filesystem scan)."
-    type: string
-    required: true
   github-token:
     description: "GitHub token for authentication."
     type: string
     required: false
+  image-ref:
+    description: "Specify the local Docker image to be scanned. This value needs to be set if the scan-type = image."
+    type: string
+    required: false
+  matrix-id:
+    description: "Specify the matrix indicator to be leveraged on notification steps."
+    type: string
+    required: false
+  scan-type:
+    description: >-
+      "Specify the type of scan to be perforemed (e.g., 'fs' for filesystem scan, `image` for image scan)."
+    type: string
+    required: true
   slack-bot-token:
     description: "Slackbot token for sending notifications."
     type: string
@@ -36,6 +44,9 @@ runs:
         if [[ '${{ inputs.scan-type }}' == 'fs' ]]; then
           echo "config_file_type=fs" >> "$GITHUB_OUTPUT"
         fi
+        if [[ '${{ inputs.scan-type }}' == 'image' ]]; then
+          echo "config_file_type=image" >> "$GITHUB_OUTPUT"
+        fi
       shell: bash
 
     - name: Run Trivy vulnerability scanner in ${{ inputs.scan-type }} mode
@@ -43,6 +54,7 @@ runs:
       uses: aquasecurity/trivy-action@0.23.0
       with:
         scan-type: ${{ inputs.scan-type }}
+        image-ref: ${{ inputs.image-ref }}
         trivy-config: .trivy/${{ steps.configuration_file.outputs.config_file_type }}-config.yaml
       continue-on-error: true
 
@@ -56,17 +68,22 @@ runs:
           echo "Keep trivy artifact for 1 day on PR builds"
           echo "days=1" >> "$GITHUB_OUTPUT"
         fi
-        echo "sha_short=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
+
+        sha_short=$(git rev-parse --short HEAD)
         sanitized_ref_name=$(echo "${{ github.ref_name }}" | sed 's/[\\\/:*?<>|]/-/g')
 
-        echo "ref_name=${sanitized_ref_name}" >> $GITHUB_OUTPUT
+        if [[ -z '${{ inputs.matrix-id }}' ]]; then
+          echo "name=trivy-${{ inputs.scan-type }}-results-${sha_short}-${sanitized_ref_name}" >> $GITHUB_OUTPUT
+        else
+          echo "name=trivy-${{ inputs.scan-type }}-results-${sha_short}-${sanitized_ref_name}-${{ inputs.matrix-id }}" >> $GITHUB_OUTPUT
+        fi
       shell: bash
 
     - name: Upload Trivy report to artifacts
       uses: actions/upload-artifact@v4
       id: trivy_artifact_upload
       with:
-        name: trivy-${{ inputs.scan-type }}-results-${{ steps.artifact_metadata.outputs.sha_short }}-${{ steps.artifact_metadata.outputs.ref_name }}
+        name: ${{ steps.artifact_metadata.outputs.name }}
         path: trivy-${{ inputs.scan-type }}-results.json
         retention-days: ${{ steps.artifact_metadata.outputs.days }}
         if-no-files-found: ignore
@@ -79,6 +96,7 @@ runs:
       env:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         SCAN_TYPE: ${{ inputs.scan-type }}
+        MATRIX_ID: ${{ inputs.matrix-id }}
       with:
         script: |
           const fs = require('fs');
@@ -87,7 +105,12 @@ runs:
           const owner = context.repo.owner;
           const repo = context.repo.repo;
 
-          const commentIdentifier = `<!-- trivyReportComment-${process.env.SCAN_TYPE}-->`;
+          let commentIdentifier;
+          if (!process.env.MATRIX_ID) {
+            commentIdentifier = `<!-- trivyReportComment-${process.env.SCAN_TYPE}-->`;
+          } else {
+            commentIdentifier = `<!-- trivyReportComment-${process.env.SCAN_TYPE}-${process.env.MATRIX_ID}-->`;
+          }
 
           const filePath = path.join(process.env.GITHUB_WORKSPACE, `trivy-${process.env.SCAN_TYPE}-results.json`);
           const fileContent = fs.readFileSync(filePath, 'utf8');
@@ -142,9 +165,11 @@ runs:
           const botComment = comments.data.find(comment => comment.body.includes(commentIdentifier));
           core.info(`Parsed Vulnerabilities: ${JSON.stringify(vulnerabilities)}`)
 
+          const scanTypeName = process.env.SCAN_TYPE === 'fs' ? 'filesystem' : 'image';
+
           if (vulnerabilities.flatMap(result => result.Vulnerabilities).length === 0) {
             if (botComment) {
-              const noErrorsComment = `No vulnerabilities to be reported.\n${commentIdentifier}`;
+              const noErrorsComment = `No Trivy ${scanTypeName} vulnerabilities to be reported${process.env.MATRIX_ID ? ` for ${process.env.MATRIX_ID}` : ''}.\n${commentIdentifier}`;
 
               await github.rest.issues.updateComment({
                 owner,
@@ -172,15 +197,16 @@ runs:
 
             if (formattedContent.length > MAX_COMMENT_LENGTH) {
               fullCommentBody = `
-              The Trivy scan report is too large to display here. Please view the detailed output from the job:
+              The Trivy ${scanTypeName} scan report${process.env.MATRIX_ID ? ` for ${process.env.MATRIX_ID}` : ''} too large to display here. Please view the detailed output from the job:
 
               [View Trivy Report](https://github.com/${owner}/${repo}/actions/runs/${context.runId})
 
               ${commentIdentifier}
               `;
             } else {
+
               fullCommentBody = `
-              View the Trivy scan report below. Click on the dropdown to expand the report.
+              View the Trivy ${scanTypeName} scan report${process.env.MATRIX_ID ? ` for ${process.env.MATRIX_ID}` : ''} below. Click on the dropdown to expand the report.
               ${formattedContent}
               `;
             }
@@ -205,7 +231,7 @@ runs:
           }
 
     - name: Notify Slack of critical vulnerabilities
-      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count != '0' && github.ref_name == 'main' && inputs.slack-bot-token }}
+      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count != '0' && github.ref_name == 'main' && inputs.slack-bot-token && !inputs.matrix-id }}
       uses: slackapi/slack-github-action@v1.26.0
       env:
         SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
@@ -218,7 +244,7 @@ runs:
                 "type": "section",
                 "text": {
                   "type": "mrkdwn",
-                  "text": ":alert: *Critical vulnerabilities detected* in Trivy ${{ inputs.scan-type }} scan. ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count }} critical vulnerabilities detected."
+                  "text": ":alert: *Critical vulnerabilities detected* in Trivy ${{ inputs.scan-type }} scan. `${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count }}` critical vulnerabilities detected."
                 }
               },
               {
@@ -231,6 +257,50 @@ runs:
                   {
                     "type": "mrkdwn",
                     "text": "*Branch:*\n`${{ github.ref_name }}`"
+                  }
+                ]
+              },
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": "<${{ steps.trivy_artifact_upload.outputs.artifact-url }}|View Artifacts>"
+                }
+              }
+            ]
+          }
+
+    - name: Notify Slack of critical vulnerabilities (${{ inputs.matrix-id }})
+      if: ${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count != '0' && github.ref_name == 'main' && inputs.slack-bot-token && inputs.matrix-id }}
+      uses: slackapi/slack-github-action@v1.26.0
+      env:
+        SLACK_BOT_TOKEN: ${{ inputs.slack-bot-token }}
+      with:
+        channel-id: 'C078TPMGC21'
+        payload: |
+          {
+            "blocks": [
+              {
+                "type": "section",
+                "text": {
+                  "type": "mrkdwn",
+                  "text": ":alert: *Critical vulnerabilities detected* in Trivy ${{ inputs.scan-type }} scan. `${{ steps.trivy_report_notification.outputs.critical_vulnerabilities_count }}` critical vulnerabilities detected."
+                }
+              },
+              {
+                "type": "section",
+                "fields": [
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Repository:*\n`${{ github.repository }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Branch:*\n`${{ github.ref_name }}`"
+                  },
+                  {
+                    "type": "mrkdwn",
+                    "text": "*Matrix ID:*\n`${{ inputs.matrix-id }}`"
                   }
                 ]
               },

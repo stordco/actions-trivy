@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.2](https://github.com/stordco/actions-trivy/compare/v1.1.1...v1.1.2) (2024-08-21)
+
+
+### Bug Fixes
+
+* skip pull request comment if not ran with a pull request ([303e9ca](https://github.com/stordco/actions-trivy/commit/303e9ca025e7c46f050bd425f9ba4a1aea84c70b))
+
 ## [1.1.1](https://github.com/stordco/actions-trivy/compare/v1.1.0...v1.1.1) (2024-06-20)
 
 

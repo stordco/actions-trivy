@@ -27,6 +27,10 @@ inputs:
   slack-channel-id:
     description: "Slack channel ID for sending notifications."
     required: false
+  update-db:
+    description: "Update Trivy vulnerability database."
+    required: false
+    default: "true"
 
 outputs:
   artifact-url:
@@ -50,6 +54,8 @@ runs:
     - name: Run Trivy vulnerability scanner in ${{ inputs.scan-type }} mode
       id: trivy_scan
       uses: aquasecurity/trivy-action@0.23.0
+      env:
+        TRIVY_SKIP_DB_UPDATE: ${{ inputs.update-db == "false" && "true" || "false" }}
       with:
         scan-type: ${{ inputs.scan-type }}
         image-ref: ${{ inputs.image-ref }}

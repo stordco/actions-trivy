@@ -57,7 +57,7 @@ For default usage:
     uses: stordco/actions-trivy@v1
     with:
         scan-type: image
-        image-ref: gcr.io/stord-ci/app-base:1.2.1_d5cd08e
+        image-ref: gcr.io/stord-ci/app-base:2024.06.25_d5cd08e
         github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}
         slack-channel-id: ${{ secrets.SLACK_SECURITY_ALERTS }}
@@ -70,7 +70,7 @@ For default usage:
     uses: stordco/actions-trivy@v1
     with:
         scan-type: image
-        image-ref: gcr.io/stord-ci/app-base:1.2.1_d5cd08e
+        image-ref: gcr.io/stord-ci/app-base:2024.06.25_d5cd08e
         matrix-id: unique-identifier
         github-token: ${{ secrets.GH_PERSONAL_ACCESS_TOKEN }}
         slack-bot-token: ${{ secrets.SLACK_BOT_TOKEN }}

@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.2](https://github.com/stordco/actions-trivy/compare/v1.2.1...v1.2.2) (2024-10-24)
+
+
+### Bug Fixes
+
+* SRE-955 use single quotes for template strings ([#14](https://github.com/stordco/actions-trivy/issues/14)) ([e3faa8c](https://github.com/stordco/actions-trivy/commit/e3faa8cfd232db752289be8766955f26cb7a26c8))
+
 ## [1.2.1](https://github.com/stordco/actions-trivy/compare/v1.1.2...v1.2.1) (2024-10-24)
 
 

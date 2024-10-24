@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.2.1](https://github.com/stordco/actions-trivy/compare/v1.1.2...v1.2.1) (2024-10-24)
+
+
+### Features
+
+* [SRE-830] Add trivy docker scan configuration and matrix outputs ([#7](https://github.com/stordco/actions-trivy/issues/7)) ([98c14a2](https://github.com/stordco/actions-trivy/commit/98c14a203eff50931a79d42b2abe0d7ab0990ec3))
+* SRE-955 support skipping trivy db update ([#13](https://github.com/stordco/actions-trivy/issues/13)) ([486ae16](https://github.com/stordco/actions-trivy/commit/486ae16ff6ec2ade80cc221cf6119b92f09f3e48))
+
+
+### Miscellaneous Chores
+
+* release 1.2.1 ([#12](https://github.com/stordco/actions-trivy/issues/12)) ([d39695a](https://github.com/stordco/actions-trivy/commit/d39695a40073ca5e5db1e3eb7f6a216b8be7a63a))
+
 ## [1.1.2](https://github.com/stordco/actions-trivy/compare/v1.1.1...v1.1.2) (2024-08-21)
 
 

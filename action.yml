@@ -55,7 +55,7 @@ runs:
       id: trivy_scan
       uses: aquasecurity/trivy-action@0.23.0
       env:
-        TRIVY_SKIP_DB_UPDATE: ${{ inputs.update-db == "false" && "true" || "false" }}
+        TRIVY_SKIP_DB_UPDATE: ${{ inputs.update-db == 'false' && 'true' || 'false' }}
       with:
         scan-type: ${{ inputs.scan-type }}
         image-ref: ${{ inputs.image-ref }}

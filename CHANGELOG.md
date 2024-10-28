@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.2.3](https://github.com/stordco/actions-trivy/compare/v1.2.2...v1.2.3) (2024-10-28)
+
+
+### Bug Fixes
+
+* update trivy-action version ([#16](https://github.com/stordco/actions-trivy/issues/16)) ([a547cd1](https://github.com/stordco/actions-trivy/commit/a547cd12ff9b9f415e65711ab011e3b8276215c9))
+
 ## [1.2.2](https://github.com/stordco/actions-trivy/compare/v1.2.1...v1.2.2) (2024-10-24)
 
 

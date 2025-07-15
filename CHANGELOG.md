@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.3.0](https://github.com/stordco/actions-trivy/compare/v1.2.3...v1.3.0) (2025-07-15)
+
+
+### Features
+
+* Exclude vulnerabilities by target pattern ([#18](https://github.com/stordco/actions-trivy/issues/18)) ([d36c3a4](https://github.com/stordco/actions-trivy/commit/d36c3a4f3c2ff97e725f931d30aa49ce3a151bce))
+
 ## [1.2.3](https://github.com/stordco/actions-trivy/compare/v1.2.2...v1.2.3) (2024-10-28)
 
 

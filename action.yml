@@ -19,7 +19,7 @@ inputs:
     required: false
   scan-type:
     description: >-
-      "Specify the type of scan to be perforemed (e.g., 'fs' for filesystem scan, `image` for image scan)."
+      "Specify the type of scan to be performed (e.g., 'fs' for filesystem scan, `image` for image scan)."
     required: true
   slack-bot-token:
     description: "Slackbot token for sending notifications."
@@ -31,6 +31,9 @@ inputs:
     description: "Update Trivy vulnerability database."
     required: false
     default: "true"
+  exclude-target-pattern:
+    description: "Exclude vulnerabilities where the target matches this pattern."
+    required: false
 
 outputs:
   artifact-url:
@@ -101,6 +104,7 @@ runs:
         GITHUB_TOKEN: ${{ inputs.github-token }}
         SCAN_TYPE: ${{ inputs.scan-type }}
         MATRIX_ID: ${{ inputs.matrix-id }}
+        EXCLUDE_TARGET_PATTERN: ${{ inputs.exclude-target-pattern }}
       with:
         script: |
           const fs = require('fs');
@@ -154,13 +158,24 @@ runs:
             return [headerRow, separatorRow, ...rows].join("\n");
           }
 
-          function parseTrivyResults(data) {
-            return data.Results.map(result => ({
-              Target: result.Target,
-              Vulnerabilities: result.Vulnerabilities || []
-            }));
-          }
 
+          function parseTrivyResults(data) {
+            const excludePattern = process.env.EXCLUDE_TARGET_PATTERN ? new RegExp(process.env.EXCLUDE_TARGET_PATTERN) : null;
+
+            return data.Results.map(result => {
+              let vulnerabilities = result.Vulnerabilities || [];
+
+              // Filter out vulnerabilities if exclude pattern is provided and matches the target
+              if (excludePattern && result.Target && excludePattern.test(result.Target)) {
+                vulnerabilities = [];
+              }
+
+              return {
+                Target: result.Target,
+                Vulnerabilities: vulnerabilities
+              };
+            });
+          }
           const vulnerabilities = parseTrivyResults(jsonData);
           const criticalVulnerabilitiesCount = vulnerabilities.flatMap(result => result.Vulnerabilities).filter(vuln => vuln.Severity === 'CRITICAL').length;
           core.setOutput('critical_vulnerabilities_count', criticalVulnerabilitiesCount.toString());
